@@ -24,8 +24,6 @@
 import os.path
 import posixpath
 import pinax
-import logging
-
 
 
 PINAX_ROOT = os.path.abspath(os.path.dirname(pinax.__file__))
@@ -41,7 +39,15 @@ DEBUG = True
 TEMPLATE_DEBUG = DEBUG
 
 # tells Pinax to serve media through django.views.static.serve.
-SERVE_MEDIA = True
+SERVE_MEDIA = DEBUG
+
+# django-compressor is turned off by default due to deployment overhead for
+# most users. See <URL> for more information
+COMPRESS = False
+
+INTERNAL_IPS = [
+    "127.0.0.1",
+]
 
 ADMINS = (
     # ('Your Name', 'your_email@domain.com'),
@@ -49,12 +55,16 @@ ADMINS = (
 
 MANAGERS = ADMINS
 
-DATABASE_ENGINE = 'mysql'    # 'postgresql_psycopg2', 'postgresql', 'mysql', 'sqlite3' or 'ado_mssql'.
-DATABASE_NAME = 'scrumdo'       # Or path to database file if using sqlite3.
-DATABASE_USER = 'scrumaster'             # Not used with sqlite3.
-DATABASE_PASSWORD = 'dlfksj39028'         # Not used with sqlite3.
-DATABASE_HOST = ''             # Set to empty string for localhost. Not used with sqlite3.
-DATABASE_PORT = ''             # Set to empty string for default. Not used with sqlite3.
+DATABASES = {
+    "default": {
+        "ENGINE": "django.db.backends.postgresql_psycopg2", # Add "postgresql_psycopg2", "postgresql", "mysql", "sqlite3" or "oracle".
+        "NAME": "scrumdo",                       # Or path to database file if using sqlite3.
+        "USER": "",                             # Not used with sqlite3.
+        "PASSWORD": "",                         # Not used with sqlite3.
+        "HOST": "",                             # Set to empty string for localhost. Not used with sqlite3.
+        "PORT": "",                             # Set to empty string for default. Not used with sqlite3.
+    }
+}
 
 # Local time zone for this installation. Choices can be found here:
 # http://www.postgresql.org/docs/8.1/static/datetime-keywords.html#DATETIME-TIMEZONE-SET-TABLE
@@ -66,7 +76,7 @@ TIME_ZONE = 'US/Eastern'
 # Language code for this installation. All choices can be found here:
 # http://www.w3.org/TR/REC-html40/struct/dirlang.html#langcodes
 # http://blogs.law.harvard.edu/tech/stories/storyReader$15
-LANGUAGE_CODE = 'en'
+LANGUAGE_CODE = 'en-us'
 
 SITE_ID = 1
 
@@ -91,15 +101,25 @@ STATIC_ROOT = os.path.join(PROJECT_ROOT, 'site_media', 'static')
 STATIC_URL = '/site_media/static/'
 
 # Additional directories which hold static files
-STATICFILES_DIRS = (
-    ('scrumdo-web', os.path.join(PROJECT_ROOT, 'media')),
-    ('pinax', os.path.join(PINAX_ROOT, 'media', PINAX_THEME)),
-)
+STATICFILES_DIRS = [
+    os.path.join(PROJECT_ROOT, "static"),
+    os.path.join(PINAX_ROOT, "themes", PINAX_THEME, "static"),
+]
+
+STATICFILES_FINDERS = [
+    "staticfiles.finders.FileSystemFinder",
+    "staticfiles.finders.AppDirectoriesFinder",
+    "staticfiles.finders.LegacyAppDirectoriesFinder",
+    "compressor.finders.CompressorFinder",
+]
 
 # URL prefix for admin media -- CSS, JavaScript and images. Make sure to use a
 # trailing slash.
 # Examples: "http://foo.com/media/", "/media/".
 ADMIN_MEDIA_PREFIX = posixpath.join(STATIC_URL, "admin/")
+
+# Subdirectory of COMPRESS_ROOT to store the cached media files in
+COMPRESS_OUTPUT_DIR = "cache"
 
 # Make this unique, and don't share it with anybody.
 SECRET_KEY = 'cl@#$@#!%$^!42164363246y@18*^@-!+$fu^q!sa6yh2^'
@@ -117,22 +137,22 @@ AVATAR_GRAVATAR_BACKUP = True
 MIDDLEWARE_CLASSES = (
     'django.middleware.common.CommonMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
+    "django.middleware.csrf.CsrfViewMiddleware",
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django_openid.consumer.SessionConsumer',
-    'account.middleware.LocaleMiddleware',
-    'django.middleware.doc.XViewMiddleware',
+    'account.middleware.LocaleMiddleware',\
     'pagination.middleware.PaginationMiddleware',
     'django_sorting.middleware.SortingMiddleware',
     'pinax.middleware.security.HideSensistiveFieldsMiddleware',
     'django.middleware.transaction.TransactionMiddleware',
-#    'debug_toolbar.middleware.DebugToolbarMiddleware'
+    'debug_toolbar.middleware.DebugToolbarMiddleware'
 )
 
-ROOT_URLCONF = 'urls'
+ROOT_URLCONF = 'scrumdo_web.urls'
 
 TEMPLATE_DIRS = (
     os.path.join(PROJECT_ROOT, "templates"),
-    os.path.join(PINAX_ROOT, "templates", PINAX_THEME),
+    os.path.join(PINAX_ROOT, "themes", PINAX_THEME, "templates"),
 )
 
 TEMPLATE_CONTEXT_PROCESSORS = (
@@ -144,8 +164,8 @@ TEMPLATE_CONTEXT_PROCESSORS = (
     "projects.context_processors.projects_constants",
     "pinax.core.context_processors.pinax_settings",
     "announcements.context_processors.site_wide_announcements",
-    "account.context_processors.openid",
-    "account.context_processors.account",
+    "pinax.apps.account.context_processors.openid",
+    "pinax.apps.account.context_processors.account",
 )
 
 INSTALLED_APPS = (
@@ -177,12 +197,17 @@ INSTALLED_APPS = (
     'django_markup',
     'django_filters',
     'staticfiles',
+    'compressor',
+    'django_openid',
 #    'tastypie',
 
+    
+    'pinax.apps.account',
+    'pinax.apps.analytics',
+    'pinax.apps.signup_codes',
+    
     # internal (for now)
     'basic_profiles',
-    'account',
-    'signup_codes',
     'about',
     'tag_app',
     'tagging_utils',
@@ -206,6 +231,10 @@ INSTALLED_APPS = (
 ABSOLUTE_URL_OVERRIDES = {
     "auth.user": lambda o: "/profiles/profile/%s/" % o.username,
 }
+
+FIXTURE_DIRS = [
+    os.path.join(PROJECT_ROOT, "fixtures"),
+]
 
 MARKUP_FILTER_FALLBACK = 'none'
 MARKUP_CHOICES = (
@@ -231,22 +260,17 @@ LOGIN_URL = "/account/login/"
 LOGIN_REDIRECT_URLNAME = "projects.views.home"
 
 
-EMAIL_HOST='localhost'
-EMAIL_HOST_USER=''
-EMAIL_HOST_PASSWORD=''
-EMAIL_PORT='25'
-
 CONTACT_EMAIL = "help@example.com"
 DEFAULT_FROM_EMAIL = 'noreply@example.com'
 SERVER_EMAIL = 'noreply@example.com'
 SUPPORT_URL = "http://support.example.com/"
 
+# @@@ deprecated
 GOOGLE_ANALYTICS = False
 GOOGLE_ANALYTICS_ACCOUNT = ""
 
 CACHE_BACKEND = 'locmem://'
 
-INTERNAL_IPS = ('127.0.0.1',)
 
 BASE_URL="http://localhost:8000"
 
